@@ -163,7 +163,7 @@ class StretchedGridPoisson:
             self.phi[:,-1,:] = values
         else:
             # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:
+            print("ERROR: the string \"%s\" is not one of the allowed options:\
                     bottom, top, left, right, front, back, all" % boundary)
 
     def resetDirichlet(self,boundary):
@@ -198,7 +198,7 @@ class StretchedGridPoisson:
             self.phi[:,-1,:] = np.zeros_like(self.phi[:,-1,:])
         else:
             # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:
+            print("ERROR: the string \"%s\" is not one of the allowed options:\
                     bottom, top, left, right, front, back, all" % boundary)
 
     def setNeumann(self,H,boundary):
@@ -238,7 +238,7 @@ class StretchedGridPoisson:
             self.neumBacH = H
         else:
             # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:
+            print("ERROR: the string \"%s\" is not one of the allowed options:\
                     bottom, top, left, right, front, back, all" % boundary)
 
         self.boundaryCondSet = True
@@ -275,7 +275,7 @@ class StretchedGridPoisson:
             self.neumBac = False
         else:
             # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:
+            print("ERROR: the string \"%s\" is not one of the allowed options:\
                     bottom, top, left, right, front, back, all" % boundary)
 
     def solvePoisson(self, numOfIt):
