@@ -17,9 +17,9 @@ class StretchedGridPoisson:
 
     def __init__(self,x,y,z,phi,f):
         # Default the solver to some Poisson Equation
-        self.x = np.copy(x)
-        self.y = np.copy(y)
-        self.z = np.copy(z)
+        self.x, self.nx = np.copy(x), x.size
+        self.y, self.ny = np.copy(y), y.size
+        self.z, self.nz = np.copy(z), z.size
 
         self.centersToEdges() # Create edges
 
@@ -37,9 +37,9 @@ class StretchedGridPoisson:
         self.Ly = self.dY[:-1]*self.dY[1:]*(self.dY[:-1]+self.dY[1:])
         self.Lz = self.dZ[:-1]*self.dZ[1:]*(self.dZ[:-1]+self.dZ[1:])
         
-        A = self.dX[1:]/self.Lx; B = -(self.dX[:-1]+self.dX[1:])/self.Lx; C = self.dX[:-1]/self.Lx
-        D = self.dY[1:]/self.Ly; E = -(self.dY[:-1]+self.dY[1:])/self.Ly; F = self.dY[:-1]/self.Ly
-        G = self.dZ[1:]/self.Lz; H = -(self.dZ[:-1]+self.dZ[1:])/self.Lz; J = self.dZ[:-1]/self.Lz
+        A = 2*self.dX[1:]/self.Lx; B = -2*(self.dX[:-1]+self.dX[1:])/self.Lx; C = 2*self.dX[:-1]/self.Lx
+        D = 2*self.dY[1:]/self.Ly; E = -2*(self.dY[:-1]+self.dY[1:])/self.Ly; F = 2*self.dY[:-1]/self.Ly
+        G = 2*self.dZ[1:]/self.Lz; H = -2*(self.dZ[:-1]+self.dZ[1:])/self.Lz; J = 2*self.dZ[:-1]/self.Lz
         
         # Reshape the X, Y, and Z coefficients so that elementwise
         # multiplication is done correctly in the iterative solver.
@@ -263,22 +263,28 @@ class StretchedGridPoisson:
 
         if boundary == "bottom" or boundary == "all":
             self.neumBot = False
+            self.neumBotH = H
         elif boundary == "top" or boundary == "all":
             self.neumTop = False
+            self.neumTopH = H
         elif boundary == "left" or boundary == "all":
             self.neumLef = False
+            self.neumLefH = H
         elif boundary == "right" or boundary == "all":
             self.neumRig = False
+            self.neumRigH = H
         elif boundary == "forward" or boundary == "all":
             self.neumFor = False
+            self.neumForH = H
         elif boundary == "back" or boundary == "all":
             self.neumBac = False
+            self.neumBacH = H
         else:
             # Print "error" message, because I never learned proper error handling
             print("ERROR: the string \"%s\" is not one of the allowed options:\
                     bottom, top, left, right, front, back, all" % boundary)
 
-    def solvePoisson(self, numOfIt):
+    def solvePoisson(self, numOfIt, debug=False, dbFilename="./debug.npz"):
 
         if not self.boundaryCondSet:
             print("Boundary conditions not explicitly set. Defaulting to homogeneous Dirichlet conditions at all boundaries...")
@@ -288,26 +294,59 @@ class StretchedGridPoisson:
         # without having to create another instance of this object
         self.soln = self.phi.copy()
 
+        dbBot, dbTop, dbLef, dbRig, dbFor, dbBac = 0,0,0,0,0,0
+
+        if debug and self.neumBot:
+            dbBot = np.zeros((numOfIt+1,self.nx,self.ny))
+            dbBot[0,:,:] = self.soln[:,:,0]
+        if debug and self.neumTop:
+            dbTop = np.zeros((numOfIt+1,self.nx,self.ny))
+            dbTop[0,:,:] = self.soln[:,:,-1]
+        if debug and self.neumLef:
+            dbLef = np.zeros((numOfIt+1,self.ny,self.nz))
+            dbLef[0,:,:] = self.soln[0,:,:]
+        if debug and self.neumRig:
+            dbRig = np.zeros((numOfIt+1,self.ny,self.nz))
+            dbRig[0,:,:] = self.soln[-1,:,:]
+        if debug and self.neumFor:
+            dbFor = np.zeros((numOfIt+1,self.nx,self.nz))
+            dbFor[0,:,:] = self.soln[:,0,:]
+        if debug and self.neumBac:
+            dbBac = np.zeros((numOfIt+1,self.nx,self.nz))
+            dbBac[0,:,:] = self.soln[:,-1,:]
+
+        # Make a copy of self.phi to ensure you can change
+        # boundary conditions, numOfIt, etc during the same run
+        # without having to create another instance of this object
+        # self.soln = self.phi.copy()
+
         # Begin iterative solver
+        print("Iteration: ", end="")
         for i in range(0,numOfIt):
         
             if i % 200 == 0:
-                print("Iteration: ", i)
+                print(i, end=", ")
         
             # Calculate boundary conditions (if they are Neumman) using
             # a first order accurate foward or backward difference method
             if self.neumBot:
-                self.soln[:,:,0] = self.soln[:,:,0]-self.dZ[0]*self.neumBotH(self.x,self.y,self.z[0],self.soln[:,:,0],self.f[:,:,0])
+                self.soln[:,:,0] = self.soln[:,:,1]-self.dZ[0]*self.neumBotH(self.x,self.y,self.z[0],self.soln[:,:,0],self.f[:,:,0])
+                if debug: dbBot[i,:,:] = self.soln[:,:,0]
             if self.neumTop:
                 self.soln[:,:,-1] = self.soln[:,:,-2]+self.dZ[-1]*self.neumTopH(self.x,self.y,self.z[-1],self.soln[:,:,-1],self.f[:,:,-1])
+                if debug: dbTop[i,:,:] = self.soln[:,:,-1]
             if self.neumLef:
                 self.soln[0,:,:] = self.soln[1,:,:]-self.dX[0]*self.neumLefH(self.x[0],self.y,self.z,self.soln[0,:,:],self.f[0,:,:])
+                if debug: dbLef[i,:,:] = self.soln[0,:,:]
             if self.neumRig:
                 self.soln[-1,:,:] = self.soln[-2,:,:]+self.dX[-1]*self.neumRigH(self.x[-1],self.y,self.z,self.soln[-1,:,:],self.f[-1,:,:])
+                if debug: dbRig[i,:,:] = self.soln[-1,:,:]
             if self.neumFor:
                 self.soln[:,0,:] = self.soln[:,1,:]-self.dY[0]*self.neumForH(self.x,self.y[0],self.z,self.soln[:,0,:],self.f[:,0,:])
+                if debug: dbFor[i,:,:] = self.soln[:,0,:]
             if self.neumBac:
-                self.soln[:,-1,:] = self.soln[:,-2,:]+self.dY[0]*self.neumBacH(self.x,self.y[-1],self.z,self.soln[:,-1,:],self.f[:,-1,:])
+                self.soln[:,-1,:] = self.soln[:,-2,:]+self.dY[-1]*self.neumBacH(self.x,self.y[-1],self.z,self.soln[:,-1,:],self.f[:,-1,:])
+                if debug: dbBac[i,:,:] = self.soln[:,-1,:]
         
             # Apply the method of relaxation for interior points
             self.soln[1:-1,1:-1,1:-1] = 1./(self.B+self.E+self.H)*(
@@ -315,6 +354,12 @@ class StretchedGridPoisson:
                     - self.A*self.soln[:-2,1:-1,1:-1] - self.C*self.soln[2:,1:-1,1:-1]
                     - self.D*self.soln[1:-1,:-2,1:-1] - self.F*self.soln[1:-1,2:,1:-1]
                     - self.G*self.soln[1:-1,1:-1,:-2] - self.J*self.soln[1:-1,1:-1,2:])
+
+        if debug:
+            np.savez_compressed(dbFilename, dbBot=dbBot, dbTop=dbTop,
+                    dbLef=dbLef, dbRig=dbRig, dbFor=dbFor, dbBac=dbBac)
+
+        print()
 
     def saveSolution(self, filename):
         """
