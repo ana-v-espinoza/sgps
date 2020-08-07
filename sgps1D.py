@@ -1,6 +1,6 @@
 import numpy as np
 
-class StretchedGridPoisson2D:
+class StretchedGridPoisson1D:
     
     """
     Numerically solves a Poisson equation laplacian(phi) = f
@@ -18,7 +18,6 @@ class StretchedGridPoisson2D:
     def __init__(self,x,y,phi,f):
         # Default the solver to some Poisson Equation
         self.x, self.nx = np.copy(x), x.size
-        self.y, self.ny = np.copy(y), y.size
 
         self.centersToEdges() # Create edges
 
@@ -27,17 +26,14 @@ class StretchedGridPoisson2D:
 
         # Array sizes nx-1, ny-1, and nz-1
         self.dX = x[1:]-x[:-1]
-        self.dY = y[1:]-y[:-1]
         
         # Make some definitions for some coefficients used in the
         # calculations
         self.Lx = self.dX[:-1]*self.dX[1:]*(self.dX[:-1]+self.dX[1:])
-        self.Ly = self.dY[:-1]*self.dY[1:]*(self.dY[:-1]+self.dY[1:])
         
         A = 2*self.dX[1:]/self.Lx; B = -2*(self.dX[:-1]+self.dX[1:])/self.Lx; C = 2*self.dX[:-1]/self.Lx
-        D = 2*self.dY[1:]/self.Ly; E = -2*(self.dY[:-1]+self.dY[1:])/self.Ly; F = 2*self.dY[:-1]/self.Ly
         
-        # Reshape the X and Y coefficients so that elementwise
+        # Reshape the X coefficients so that elementwise
         # multiplication is done correctly in the iterative solver.
         # For more information see the python docs on "broadcasting"
         
@@ -45,11 +41,6 @@ class StretchedGridPoisson2D:
         self.A = A[:,np.newaxis,np.newaxis];
         self.B = B[:,np.newaxis,np.newaxis];
         self.C = C[:,np.newaxis,np.newaxis];
-        
-        # Reshape all the y terms
-        self.D = D[np.newaxis,:,np.newaxis];
-        self.E = E[np.newaxis,:,np.newaxis];
-        self.F = F[np.newaxis,:,np.newaxis];
         
         # Used to check whether boundary conditions have been set
         self.boundaryCondSet = False
@@ -72,14 +63,9 @@ class StretchedGridPoisson2D:
         rightEdge = 2*self.x[-1]-xEdge[-1]
         xEdge = np.concatenate(([leftEdge],xEdge,[rightEdge]))
 
-        yEdge = (self.y[1:]+self.y[:-1])/2.
-        leftEdge = 2*self.y[0]-yEdge[0]
-        rightEdge = 2*self.y[-1]-yEdge[-1]
-        yEdge = np.concatenate(([leftEdge],yEdge,[rightEdge]))
+        self.xEdge = xEdge
 
-        self.xEdge, self.yEdge = xEdge, yEdge
-
-        return xEdge,yEdge
+        return xEdge
 
     def setInitialGuess(self, phi):
         """
@@ -121,8 +107,6 @@ class StretchedGridPoisson2D:
 
         boundary -- one of the following strings
 
-        "bottom": the line at y[0]
-        "top": the line at y[-1]
         "left": the line at x[0]
         "right": the line at x[-1]
         "all": all of the above boundaries
@@ -132,18 +116,14 @@ class StretchedGridPoisson2D:
 
         # Eventually write a check to ensure the size of the boundary and that
         # of the values you're trying to set are equal
-        if boundary == "bottom" or boundary == "all":
-            self.phi[:,0] = values
-        elif boundary == "top" or boundary == "all":
-            self.phi[:,-1] = values
-        elif boundary == "left" or boundary == "all":
-            self.phi[0,:] = values
+        if boundary == "left" or boundary == "all":
+            self.phi[0] = values
         elif boundary == "right" or boundary == "all":
-            self.phi[-1,:] = values
+            self.phi[-1] = values
         else:
             # Print "error" message, because I never learned proper error handling
             print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, all" % boundary)
+                    left, right, all" % boundary)
 
     def resetDirichlet(self,boundary):
         """
@@ -152,8 +132,6 @@ class StretchedGridPoisson2D:
 
         boundary -- one of the following strings
 
-        "bottom": the line at y[0]
-        "top": the line at y[-1]
         "left": the line at x[0]
         "right": the line at x[-1]
         "all": all of the above boundaries
@@ -161,18 +139,14 @@ class StretchedGridPoisson2D:
 
         # Eventually write a check to ensure the size of the boundary and that
         # of the values you're trying to set are equal
-        if boundary == "bottom" or boundary == "all":
-            self.phi[:,0] = np.zeros_like(self.phi[:,0])
-        elif boundary == "top" or boundary == "all":
-            self.phi[:,-1] = np.zeros_like(self.phi[:,-1])
-        elif boundary == "left" or boundary == "all":
-            self.phi[0,:] = np.zeros_like(self.phi[0,:])
+        if boundary == "left" or boundary == "all":
+            self.phi[0] = np.zeros_like(self.phi[0])
         elif boundary == "right" or boundary == "all":
-            self.phi[-1,:] = np.zeros_like(self.phi[-1,:])
+            self.phi[-1] = np.zeros_like(self.phi[-1])
         else:
             # Print "error" message, because I never learned proper error handling
             print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, all" % boundary)
+                    left, right, all" % boundary)
 
     def setNeumann(self,H,boundary):
         """
@@ -182,20 +156,12 @@ class StretchedGridPoisson2D:
 
         boundary -- one of the following strings
 
-        "bottom": the line at y[0]
-        "top": the line at y[-1]
         "left": the line at x[0]
         "right": the line at x[-1]
         "all": all of the above boundaries
         """
 
-        if boundary == "bottom" or boundary == "all":
-            self.neumBot = True
-            self.neumBotH = H
-        elif boundary == "top" or boundary == "all":
-            self.neumTop = True
-            self.neumTopH = H
-        elif boundary == "left" or boundary == "all":
+        if boundary == "left" or boundary == "all":
             self.neumLef = True
             self.neumLefH = H
         elif boundary == "right" or boundary == "all":
@@ -204,7 +170,7 @@ class StretchedGridPoisson2D:
         else:
             # Print "error" message, because I never learned proper error handling
             print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right all" % boundary)
+                    left, right all" % boundary)
 
         self.boundaryCondSet = True
 
@@ -215,22 +181,14 @@ class StretchedGridPoisson2D:
 
         boundary -- one of the following strings
 
-        "bottom": the line at y[0]
-        "top": the line at y[-1]
         "left": the line at x[0]
         "right": the line at x[-1]
         "all": all of the above boundaries
         """
 
-        H = lambda x,y,z,phi,f : 0
+        H = lambda x,phi,f : 0
 
-        if boundary == "bottom" or boundary == "all":
-            self.neumBot = False
-            self.neumBotH = H
-        elif boundary == "top" or boundary == "all":
-            self.neumTop = False
-            self.neumTopH = H
-        elif boundary == "left" or boundary == "all":
+        if boundary == "left" or boundary == "all":
             self.neumLef = False
             self.neumLefH = H
         elif boundary == "right" or boundary == "all":
@@ -239,7 +197,7 @@ class StretchedGridPoisson2D:
         else:
             # Print "error" message, because I never learned proper error handling
             print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, all" % boundary)
+                    left, right, all" % boundary)
 
     def solvePoisson(self, numOfIt, debug=False, dbFilename="./debug.npz"):
 
@@ -260,29 +218,24 @@ class StretchedGridPoisson2D:
         
             # Calculate boundary conditions (if they are Neumman) using
             # a first order accurate foward or backward difference method
-            if self.neumBot:
-                self.soln[:,0] = self.soln[:,1]-self.dY[0]*self.neumBotH(self.x,self.y[0],self.soln[:,0],self.f[:,0])
-            if self.neumTop:
-                self.soln[:,-1] = self.soln[:,-2]-self.dY[-1]*self.neumBotH(self.x,self.y[-1],self.soln[:,-1],self.f[:,-1])
             if self.neumLef:
-                self.soln[0,:] = self.soln[1,:]-self.dX[0]*self.neumLefH(self.x[0],self.y,self.soln[0,:],self.f[0,:])
+                self.soln[0] = self.soln[1]-self.dX[0]*self.neumLefH(self.x[0],self.soln[0],self.f[0])
             if self.neumRig:
-                self.soln[-1,:] = self.soln[-2,:]-self.dX[-1]*self.neumLefH(self.x[-1],self.y,self.soln[-1,:],self.f[-1,:])
+                self.soln[-1] = self.soln[-2]-self.dX[-1]*self.neumLefH(self.x[-1],self.soln[-1],self.f[-1])
         
             # Apply the method of relaxation for interior points
-            self.soln[1:-1,1:-1] = 1./(self.B+self.E)*(
-                    self.f[1:-1,1:-1]
-                    - self.A*self.soln[:-2,1:-1] - self.C*self.soln[2:,1:-1]
-                    - self.D*self.soln[1:-1,:-2] - self.F*self.soln[1:-1,2])
+            self.soln[1:-1,1:-1] = 1./(self.B)*(
+                    self.f[1:-1]
+                    - self.A*self.soln[:-2,1:-1] - self.C*self.soln[2:,1:-1])
         print()
 
     def saveSolution(self, filename):
         """
         Save the following variables in the .npz file format:
-        x,y,
-        xEdge,yEdge,
+        x,
+        xEdge,
         phi,soln
         """
-        np.savez_compressed(filename, x=self.x, y=self.y,
-                xEdge=self.xEdge, yEdge=self.yEdge,
+        np.savez_compressed(filename, x=self.x,
+                xEdge=self.xEdge,
                 phiInit=self.phi, soln=self.soln)
