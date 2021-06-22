@@ -18,7 +18,7 @@ def centersToEdges(X):
 
     return xEdge
 
-def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
+def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const,gridType):
 
     nX = sgps.X.size
     nY = sgps.Y.size
@@ -60,18 +60,37 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
         print()
 
         im = plt.pcolormesh(eX[1:-1,1:-1],eY[1:-1,1:-1],err)
+
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_error.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,1:-1],eY[1:-1,1:-1],soln)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_soln.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,1:-1],eY[1:-1,1:-1],exact)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_exact.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
     if bcType == "LNBC":
@@ -100,17 +119,36 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
 
         im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],err)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_error.png".format(bcType,gridType))
+        plt.colorbar(im)
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],soln)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_soln.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],exact)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_exact.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
     if bcType == "UNBC":
@@ -138,15 +176,33 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
 
         im = plt.pcolormesh(eX[1:-1,1:],eY[1:-1,1:],err)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_error.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,1:],eY[1:-1,1:],soln)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_soln.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
         im = plt.pcolormesh(eX[1:-1,1:],eY[1:-1,1:],exact)
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates2D/{}_{}_exact.png".format(bcType,gridType))
+        #plt.show()
         plt.close()

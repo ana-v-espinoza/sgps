@@ -20,7 +20,7 @@ def UNBC(X,phiBot,phiPTop):
 dims = 1
 plots = 0
 const = 2000
-decPlaces = 2
+decPlaces = 4
 
 x0 = 0
 xL = 200
@@ -30,6 +30,7 @@ iX = np.arange(0,nX)
 ########################################
 # Linear Grid
 ########################################
+gridType = "lin"
 dX = (xL-x0)/(nX-1) # m
 X = iX*dX
 
@@ -41,14 +42,19 @@ bcValues = np.array([[phiBot,phiTop],[phiPBot,phiPTop]])
 
 sgps = StretchedGridPoisson(1,X1=X)
 
-genPlots(X,sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const)
-genPlots(X,sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const)
-genPlots(X,sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const)
+print("1D")
+print("LINEAR GRID")
+print("Dirichlet")
+genPlots(X,sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const,gridType)
+print("LNBC")
+genPlots(X,sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const,gridType)
+print("UNBC")
+genPlots(X,sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const,gridType)
 
 ########################################
 # Exponential Grid
 ########################################
-
+gridType = "exp"
 X = (xL+1)**(iX/(nX-1))-1
 
 phiTop = 10
@@ -59,7 +65,12 @@ bcValues = np.array([[phiBot,phiTop],[phiPBot,phiPTop]])
 
 sgps = StretchedGridPoisson(1,X1=X)
 
-genPlots(X,sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const)
-genPlots(X,sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const)
-genPlots(X,sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const)
+print("1D")
+print("EXPONENTIAL GRID")
+print("Dirichlet")
+genPlots(X,sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const,gridType)
+print("LNBC")
+genPlots(X,sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const,gridType)
+print("UNBC")
+genPlots(X,sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const,gridType)
 

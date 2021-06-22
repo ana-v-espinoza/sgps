@@ -10,10 +10,10 @@ from genPlots3D import genPlots
 # Zero forcing function means the solution is defined by the boundary
 # conditions and should be a straight line:
 def DBCS(X,Y,Z,phiBot,phiTop):
-    return (phiTop - phiBot)*X/X[:,-1] + phiBot
+    return (phiTop - phiBot)*X/X[0,-1,0] + phiBot
 
 def LNBC(X,Y,Z,phiPBot,phiTop):
-    return phiPBot*(X-X[:,-1])+phiTop
+    return phiPBot*(X-X[0,-1,0])+phiTop
 
 def UNBC(X,Y,Z,phiBot,phiPTop):
     return phiPTop*X+phiBot
@@ -22,7 +22,7 @@ def UNBC(X,Y,Z,phiBot,phiPTop):
 dims = 1
 plots = 0
 const = 2000
-decPlaces = 2
+decPlaces = 4
 
 x0 = 0
 xL = 200
@@ -45,8 +45,11 @@ Z = iZ*dZ
 ########################################
 # Linear Grid
 ########################################
+gridType = "lin"
 dX = (xL-x0)/(nX-1) # m
 X = iX*dX
+
+mX, mY, mZ = np.meshgrid(X,Y,Z)
 
 phiTop = 100
 phiBot = 0
@@ -56,17 +59,19 @@ bcValues = np.array([[phiBot,phiTop],[phiPBot,phiPTop]])
 
 sgps = StretchedGridPoisson(3,X1=X,X2=Y,X3=Z)
 
-print("Dirichlet \n")
-genPlots(sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const)
-#print("LNBC \n")
-#genPlots(sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const)
-#print("UNBC \n")
-#genPlots(sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const)
+print("3D")
+print("LINEAR GRID")
+print("Dirichlet")
+genPlots(sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const,gridType)
+print("LNBC")
+genPlots(sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const,gridType)
+print("UNBC")
+genPlots(sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const,gridType)
 
 ########################################
 # Exponential Grid
 ########################################
-
+gridType = "exp"
 X = (xL+1)**(iX/(nX-1))-1
 
 phiTop = 100
@@ -75,12 +80,14 @@ phiPBot = (phiTop-phiBot)/X[-1]
 phiPTop = (phiTop-phiBot)/X[-1]
 bcValues = np.array([[phiBot,phiTop],[phiPBot,phiPTop]])
 
-#sgps = StretchedGridPoisson(3,X1=X,X2=Y,X3=Z)
-#
-#print("Dirichlet \n")
-#genPlots(sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const)
-#print("LNBC \n")
-#genPlots(sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const)
-#print("UNBC \n")
-#genPlots(sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const)
-#
+sgps = StretchedGridPoisson(3,X1=X,X2=Y,X3=Z)
+
+print("3D")
+print("EXPONENTIAL GRID")
+print("Dirichlet")
+genPlots(sgps,DBCS,"dirichlet",(bcValues[0,0],bcValues[0,1]),decPlaces,const,gridType)
+print("LNBC")
+genPlots(sgps,LNBC,"LNBC",(bcValues[1,0],bcValues[0,1]),decPlaces,const,gridType)
+print("UNBC")
+genPlots(sgps,UNBC,"UNBC",(bcValues[0,0],bcValues[1,1]),decPlaces,const,gridType)
+

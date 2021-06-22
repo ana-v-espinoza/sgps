@@ -2,7 +2,7 @@ import numpy as np
 from sgpsKron import *
 from matplotlib import pyplot as plt
 
-def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const):
+def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const,gridType):
 
     nX = X.size
 
@@ -32,9 +32,10 @@ def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const):
         plt.plot(X[1:-1],err)
         plt.plot(X[1:-1],soln)
         plt.plot(X[1:-1],exact)
-        plt.legend(["err", "soln", "exact"])
-        plt.show()
-        plt.close()
+
+        plt.title("Dirichlet Boundary Conditions")
+
+        #plt.show()
 
     if bcType == "LNBC":
         # Lower Neumann BC
@@ -62,9 +63,10 @@ def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const):
         plt.plot(X[:-1],err)
         plt.plot(X[:-1],soln)
         plt.plot(X[:-1],exact)
-        plt.legend(["err", "soln", "exact"])
-        plt.show()
-        plt.close()
+
+        plt.title("West Neumann Boundary Condition")
+
+        #plt.show()
 
     if bcType == "UNBC":
         # Upper Neumann BC
@@ -91,7 +93,15 @@ def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const):
         plt.plot(X[1:],err)
         plt.plot(X[1:],soln)
         plt.plot(X[1:],exact)
-        plt.legend(["err", "soln", "exact"])
-        plt.show()
-        plt.close()
-        plt.close()
+
+        plt.title("East Neumann Boundary Condition")
+        #plt.show()
+
+
+    plt.legend(["Error","Solution","Exact"])
+    plt.xlabel("X")
+    plt.ylabel("Soln")
+    plt.tight_layout(rect=[0,0.05,0.95,0.95])
+    #plt.show()
+    plt.savefig("parallelPlates1D/{}_{}.png".format(bcType,gridType))
+    plt.close()

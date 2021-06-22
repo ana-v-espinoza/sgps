@@ -18,7 +18,7 @@ def centersToEdges(X):
 
     return xEdge
 
-def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
+def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const,gridType):
 
     nX = sgps.X.size
     nY = sgps.Y.size
@@ -28,18 +28,11 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
     Y = sgps.Y
     Z = sgps.Z
 
-    mZ, mY, mX = np.meshgrid(Z,Y,X)
+    #mZ, mY, mX = np.meshgrid(Z,Y,X)
+    mX, mY, mZ = np.meshgrid(X,Y,Z)
     eX = centersToEdges(mX)
     eY = centersToEdges(mY)
     eZ = centersToEdges(mZ)
-
-    print(eX[0,1:-1,1:-1])
-    im = plt.pcolormesh(eX[0,:,:])
-    plt.colorbar(im)
-    plt.show()
-    plt.close()
-
-    return
 
     if bcType == "dirichlet":
         Ax = sgps.set_1DA("X1")
@@ -50,15 +43,17 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
         # Dirichlet
         sgps.set_boundaryValues("X1","lower", bcValues[0])
         sgps.set_boundaryValues("X1","upper", bcValues[1])
-
-        A, T, rhoT = sgps.set_modelMatrix()
         f = np.zeros((nZ,nY,nX))
         sgps.set_forcing(f)
+
+        A, T, rhoT = sgps.set_modelMatrix()
+
         phi0 = const*np.ones((nZ-2,nY-2,nX-2))
         soln = sgps.jacobisMethod(decPlaces,phi0=phi0)
-        print(soln.shape)
-        exact = exactSoln(mX,mY,mZ,bcValues[0], bcValues[1])[1:-1,1:-1,1:-1]
+        soln = np.moveaxis(soln,0,-1)
 
+        phi0 = np.moveaxis(phi0,0,-1)
+        exact = exactSoln(mX,mY,mZ,bcValues[0], bcValues[1])[1:-1,1:-1,1:-1]
 
         err0 = exact-phi0
         nErr0 = np.linalg.norm(err0)
@@ -71,45 +66,64 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
         print("rhoT^t: {}".format(sgps.rhoT**sgps.t))
         print()
 
-        #im = plt.pcolormesh(
-        #        eX[int(nZ/2),1:-1,1:-1],
-        #        eY[int(nZ/2),1:-1,1:-1],
-        #        soln[int(nZ/2),:,:]
-        #        )
-        im = plt.pcolormesh(soln[int(nZ/2),:,:])
+        print("err")
+        im = plt.pcolormesh(
+                eX[1:-1,1:-1,0],eY[1:-1,1:-1,0],err[:,:,0])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_error.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
-        #im = plt.pcolormesh(
-        #        eX[1:-1,int(nY/2),1:-1],eY[1:-1,int(nY/2),1:-1],err[:,int(nY/2),:])
-        #plt.colorbar(im)
-        #plt.show()
-        #plt.close()
+        print("soln")
+        im = plt.pcolormesh(eX[1:-1,1:-1,0],eY[1:-1,1:-1,0],soln[:,:,int(nZ/2)])
+        plt.colorbar(im)
 
-        #im = plt.pcolormesh(eX[1:-1,int(nY/2),1:-1],eY[1:-1,int(nY/2),1:-1],soln)
-        #plt.colorbar(im)
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_soln.png".format(bcType,gridType))
         #plt.show()
-        #plt.close()
+        plt.close()
 
-        #im = plt.pcolormesh(eX[1:-1,int(nY/2),1:-1],eY[1:-1,int(nY/2),1:-1],exact)
-        #plt.colorbar(im)
+        print("exact")
+        im = plt.pcolormesh(eX[1:-1,1:-1,0],eY[1:-1,1:-1,0],exact[:,:,int(nZ/2)])
+        plt.colorbar(im)
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Dirichlet Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_exact.png".format(bcType,gridType))
         #plt.show()
-        #plt.close()
+        plt.close()
 
     if bcType == "LNBC":
         # Lower Neumann BC
         Ax = sgps.set_1DA("X1", lbcNeumann=True)
         Ay = sgps.set_1DA("X2")
+        Az = sgps.set_1DA("X3")
+
         sgps.set_boundaryValues("X1","lower", bcValues[0])
         sgps.set_boundaryValues("X1","upper", bcValues[1])
-        sgps.set_modelMatrix()
-        f = np.zeros((nX,nY))
-        sgps.set_forcing(f)
-        phi0 = const*np.ones((nY-2,nX-1))
-        soln = sgps.jacobisMethod(decPlaces,phi0=phi0)
+        f = np.zeros((nZ,nY,nX))
+        F = sgps.set_forcing(f)
 
-        exact = exactSoln(mX,mY,bcValues[0], bcValues[1])[1:-1,:-1]
+        sgps.set_modelMatrix()
+
+        # Solution indexed as soln[z,y,x]
+        phi0 = const*np.ones((nZ-2,nY-2,nX-1))
+        soln = sgps.jacobisMethod(decPlaces,phi0=phi0)
+        soln = np.moveaxis(soln,0,-1)
+
+        phi0 = np.moveaxis(phi0,0,-1)
+        exact = exactSoln(mX,mY,mZ,bcValues[0], bcValues[1])[1:-1,:-1,1:-1]
+
         err0 = exact - phi0
         nErr0 = np.linalg.norm(err0)
         err = exact - soln
@@ -121,34 +135,60 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
         print("rhoT^t: {}".format(sgps.rhoT**sgps.t))
         print()
 
-        im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],err)
+        print("err")
+        im = plt.pcolormesh(
+                eX[1:-1,:-1,0],eY[1:-1,:-1,0],err[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_error.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
-        im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],soln)
+        print("soln")
+        im = plt.pcolormesh(eX[1:-1,:-1,0],eY[1:-1,:-1,0],soln[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_soln.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
-        im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,:-1],exact)
+        print("exact")
+        im = plt.pcolormesh(eX[1:-1,:-1,0],eY[1:-1,:-1,0],exact[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("West Neumann Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_exact.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
     if bcType == "UNBC":
         # Upper Neumann BC
         Ax = sgps.set_1DA("X1", ubcNeumann=True)
         Ay = sgps.set_1DA("X2")
+        Az = sgps.set_1DA("X3")
         sgps.set_boundaryValues("X1","lower", bcValues[0])
         sgps.set_boundaryValues("X1","upper", bcValues[1])
         sgps.set_modelMatrix()
-        f = np.zeros((nX,nY))
+        f = np.zeros((nZ,nY,nX))
         sgps.set_forcing(f)
-        phi0 = const*np.ones((nY-2, nX-1))
+        phi0 = const*np.ones((nZ-2,nY-2,nX-1))
         soln = sgps.jacobisMethod(decPlaces,phi0=phi0)
+        # Reshape to Cartesian indexing [Y,X,Z] (for some reason)
+        soln = np.moveaxis(soln,0,-1)
 
-        exact = exactSoln(mX,mY,bcValues[0], bcValues[1])[1:-1,1:]
+        phi0 = np.moveaxis(phi0,0,-1)
+        exact = exactSoln(mX,mY,mZ,bcValues[0], bcValues[1])[1:-1,1:,1:-1]
         err0 = exact - phi0
         nErr0 = np.linalg.norm(err0)
         err = exact - soln
@@ -159,17 +199,39 @@ def genPlots(sgps,exactSoln,bcType,bcValues,decPlaces,const):
         print("rhoT^t: {}".format(sgps.rhoT**sgps.t))
         print()
 
-        im = plt.pcolormesh(eX[1:-1,1:],eY[1:-1,1:],err)
+        print("err")
+        im = plt.pcolormesh(
+                eX[1:-1,1:,0],eY[1:-1,1:,0],err[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Error (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_error.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
-        im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,1:],soln)
+        print("soln")
+        im = plt.pcolormesh(eX[1:-1,1:,0],eY[1:-1,1:,0],soln[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Solution (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_soln.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
 
-        im = plt.pcolormesh(eX[1:-1,:-1],eY[1:-1,1:],exact)
+        print("exact")
+        im = plt.pcolormesh(eX[1:-1,1:,0],eY[1:-1,1:,0],exact[:,:,int(nZ/2)])
         plt.colorbar(im)
-        plt.show()
+
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("East Neumann Boundary Conditions -- Exact Soln (shaded)")
+        plt.tight_layout(rect=[0,0.05,0.95,0.95])
+        plt.savefig("parallelPlates3D/{}_{}_exact.png".format(bcType,gridType))
+        #plt.show()
         plt.close()
