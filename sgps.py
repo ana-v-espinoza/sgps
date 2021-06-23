@@ -1,373 +1,454 @@
+"""
+Jacobi's method on 1, 2, or 3 dimensions using the Kronecker Product
+"""
+
 import numpy as np
+from scipy.sparse import *
+from matplotlib import pyplot as plt
 
 class StretchedGridPoisson:
-    
+
     """
-    Numerically solves a Poisson equation laplacian(phi) = f
-    for some scalar phi and forcing function f. The solution
-    is found using the method of relaxation on the interior
-    of the domain given by the arrays x, y, and z.
-
-    The arrays x, y, and z must be monotonically increasing
-    and may have uniform or irregular spacing between elements.
-
-    The solution is subject to the boundary conditions set by
-    the user.
+    Work flow should be:
+        1) Create class and tell it the number of dimensions of your problem
+            Give the class the grid information for each dimension
+        2) Give the class BC information for each dimension
+            Create 1D model matrices
+        3) Create full model matrix and iteration matrix
+            Find spectral radius using power method
+        4) Specify boundary values
+        6) Specify forcing function in the interior of the domain and at the
+            boundaries where Neumann conditions are specified
+        7) Create full forcing vector, including boundary values
+        5) Solve iteratively up to some prescribed reduction in error
     """
 
-    def __init__(self,x,y,z,phi,f):
-        # Default the solver to some Poisson Equation
-        self.x, self.nx = np.copy(x), x.size
-        self.y, self.ny = np.copy(y), y.size
-        self.z, self.nz = np.copy(z), z.size
-
-        self.centersToEdges() # Create edges
-
-        self.phi = np.copy(phi) # Initial guess at the solution
-        self.f = np.copy(f) # Forcing function
-
-        # Array sizes nx-1, ny-1, and nz-1
-        self.dX = x[1:]-x[:-1]
-        self.dY = y[1:]-y[:-1]
-        self.dZ = z[1:]-z[:-1]
-        
-        # Make some definitions for some coefficients used in the
-        # calculations
-        self.Lx = self.dX[:-1]*self.dX[1:]*(self.dX[:-1]+self.dX[1:])
-        self.Ly = self.dY[:-1]*self.dY[1:]*(self.dY[:-1]+self.dY[1:])
-        self.Lz = self.dZ[:-1]*self.dZ[1:]*(self.dZ[:-1]+self.dZ[1:])
-        
-        A = 2*self.dX[1:]/self.Lx; B = -2*(self.dX[:-1]+self.dX[1:])/self.Lx; C = 2*self.dX[:-1]/self.Lx
-        D = 2*self.dY[1:]/self.Ly; E = -2*(self.dY[:-1]+self.dY[1:])/self.Ly; F = 2*self.dY[:-1]/self.Ly
-        G = 2*self.dZ[1:]/self.Lz; H = -2*(self.dZ[:-1]+self.dZ[1:])/self.Lz; J = 2*self.dZ[:-1]/self.Lz
-        
-        # Reshape the X, Y, and Z coefficients so that elementwise
-        # multiplication is done correctly in the iterative solver.
-        # For more information see the python docs on "broadcasting"
-        
-        # Reshape all the x terms
-        self.A = A[:,np.newaxis,np.newaxis];
-        self.B = B[:,np.newaxis,np.newaxis];
-        self.C = C[:,np.newaxis,np.newaxis];
-        
-        # Reshape all the y terms
-        self.D = D[np.newaxis,:,np.newaxis];
-        self.E = E[np.newaxis,:,np.newaxis];
-        self.F = F[np.newaxis,:,np.newaxis];
-        
-        # Reshape all the z terms
-        self.G = G[np.newaxis,np.newaxis,:];
-        self.H = H[np.newaxis,np.newaxis,:];
-        self.J = J[np.newaxis,np.newaxis,:];
-
-        # Used to check whether boundary conditions have been set
-        self.boundaryCondSet = False
-
-        self.neumBot, self.neumTop = False, False
-        self.neumLef, self.neumRig = False, False
-        self.neumFor, self.neumBac = False, False
-
-    def centersToEdges(self):
+    def __init__(self,numOfDims,X1=None,X2=None,X3=None):
         """
-        Take a 1D array of points and return edges by calculating
-        the midpoints between consecutive points.
-        
-        Left and right edges are calculated using the same distance
-        from the first (last) center to the first (last) edge
-        """
-        
-        xEdge = (self.x[1:]+self.x[:-1])/2.
-        leftEdge = 2*self.x[0]-xEdge[0]
-        rightEdge = 2*self.x[-1]-xEdge[-1]
-        xEdge = np.concatenate(([leftEdge],xEdge,[rightEdge]))
+        Copy arrays of grid centers and find the distances between adjacent grid
+        centers
 
-        yEdge = (self.y[1:]+self.y[:-1])/2.
-        leftEdge = 2*self.y[0]-yEdge[0]
-        rightEdge = 2*self.y[-1]-yEdge[-1]
-        yEdge = np.concatenate(([leftEdge],yEdge,[rightEdge]))
+        Arrays are named X1,2,3 when taken as a kwarg so as to not trick the
+        user into thinking they need to set X,Z when, for example, they want to
+        solve an equation in the X,Z plane.
 
-        zEdge = (self.z[1:]+self.z[:-1])/2.
-        leftEdge = 2*self.z[0]-zEdge[0]
-        rightEdge = 2*self.z[-1]-zEdge[-1]
-        zEdge = np.concatenate(([leftEdge],zEdge,[rightEdge]))
-        
-        self.xEdge, self.yEdge, self.zEdge = xEdge, yEdge, zEdge
+        Boundary values are defaulted to be homogenous
 
-        return xEdge,yEdge,zEdge
-
-    def setInitialGuess(self, phi):
-        """
-        Set the initial guess of your solution, phi. This is done in
-        the class constructor, but can be set to a different array
-        here.
-
-        phi must have shape (nx, ny, nz), where nx, ny, and nz are the
-        sizes of the x, y, and z arrays that make up the domain
         """
 
-        # I could write a check to ensure the shape is correct, but
-        # I can't be bothered at this point.
-        # I also don't know whether I need to do phi.copy(), or if
-        # self.phi = phi is proper syntax to make sure the values are
-        # copied to self.phi correctly, but I do it with the
-        # self.dX, self.dY, and self.dZ variables in the __init__()
-        # function. If something breaks anywhere, check on the syntax
-        # for this
-        self.phi = phi
+        # 0th index is the lower boundary, 1st index is the upper boundary
+        self.bcX = np.zeros(2)
+        self.bcY = np.zeros(2)
+        self.bcZ = np.zeros(2)
 
-    def setForcing(self, f):
+        # BC type is set to Dirichlet by default
+        self.bcNeumannX = np.array([False, False])
+        self.bcNeumannY = np.array([False, False])
+        self.bcNeumannZ = np.array([False, False])
+
+        self.dims = numOfDims
+        self.Ax, self.Ay, self.Az = None, None, None
+        if X1 is not None:
+            self.X, self.nX = np.copy(X1), X1.size
+            self.dX = X1[1:]-X1[:-1]
+        else:
+            self.X, self.nX = None, None
+            self.dX = None
+
+        if X2 is not None:
+            self.Y, self.nY = np.copy(X2), X2.size
+            self.dY = X2[1:]-X2[:-1]
+        else:
+            self.Y, self.nY = None, None
+            self.dY = None
+
+        if X3 is not None:
+            self.Z, self.nZ = np.copy(X3), X3.size
+            self.dZ = X3[1:]-X3[:-1]
+        else:
+            self.Z, self.nZ = None, None
+            self.dZ = None
+
+    def set_1DA(self, dimension, lbcNeumann=False, ubcNeumann=False):
         """
-        Set the value of the forcing function. This is done in the
-        class constuctor, but can be set to a different array here.
+        Create the model matrix for the X/Y/Z coordinate given the Type (Neumann
+        or Dirichlet) of the lower and upper boundary condition. Defaults to
+        Dirichlet
 
-        f must have shape (nx, ny, nz), where nx, ny, and nz are the
-        sizes of the x, y, and z arrays that make up the domain
+        dimension is a string, either "X1", "X2", or "X3", depending on which 1D
+        matrix you want to set
+        """
+        # Here, n is the number of interior grid points
+        if dimension == "X1" and self.X is not None:
+            n = self.nX-2
+            dX = self.dX
+            self.bcNeumannX = np.array([lbcNeumann,ubcNeumann])
+        elif dimension == "X2" and self.Y is not None:
+            n = self.nY-2
+            dX = self.dY
+            self.bcNeumannY = np.array([lbcNeumann,ubcNeumann])
+        elif dimension == "X3" and self.Z is not None:
+            n = self.nZ-2
+            dX = self.dZ
+            self.bcNeumannZ = np.array([lbcNeumann,ubcNeumann])
+        else:
+            # Not actual error handling
+            print("""
+            dimension must be one of the following strings: "X1", "X2", "X3".
+            Also, ensure the respective grid information was given when
+            initializing class object.""")
+            return
+
+        # Neumann BCs should only be set at a single boundary, or else we have
+        # an inconsistent system. If NBCs prescribed at one of the boundaries,
+        # the matrix will be (n+1) x (n+1) rather than n x n for DBCs at both
+        # boundaries
+        n = n+1 if (lbcNeumann or ubcNeumann) else n
+
+        # The number of elements in the tridiagonal matrix, remembering that the
+        # first and last columns only have 2 elements
+        elements = 3*(n-2)+4
+
+        rows = np.zeros(elements)
+        columns = np.zeros(elements)
+        data = np.zeros(elements)
+
+        # First row of matrix, corresponding to the lower BC
+        rows[0] = 0
+        columns[0] = 0
+        # -1 if Neumann
+        data[0] = -1 if lbcNeumann else -2/(dX[0]*dX[1])
+
+        rows[1] = 0
+        columns[1] = 1
+        # 1 if Neumann
+        data[1] = 1 if lbcNeumann else 2/(dX[1]*(dX[0]+dX[1]))
+
+        # Last row of matrix, corresponding to the upper BC
+        rows[-1] = (n-1)
+        columns[-1] = (n-1)
+        # 1 if Neumann
+        data[-1] = 1 if ubcNeumann else -2/(dX[-1]*dX[-2])
+
+        rows[-2] = (n-1)
+        columns[-2] = (n-2)
+        # -1 if Neumann
+        data[-2] = -1 if ubcNeumann else 2/(dX[-2]*(dX[-1]+dX[-2]))
+
+        # Interior points
+        for i in range(1,n-1):
+           rows[3*i-1] = i
+           rows[3*i] = i
+           rows[3*i+1] = i
+
+           columns[3*i-1] = i-1
+           columns[3*i] = i
+           columns[3*i+1] = i+1
+
+           data[3*i-1] = 2/(dX[i-1]*(dX[i-1]+dX[i]))
+           data[3*i] = -2/(dX[i-1]*dX[i])
+           data[3*i+1] = 2/(dX[i]*(dX[i-1]+dX[i]))
+
+        # Create sparse matrix using scipy functions
+        if dimension == "X1" and self.X is not None:
+            self.Ax = coo_matrix((data,(rows,columns)),shape=(n,n))
+            self.Ax = self.Ax.tocsr()
+            return self.Ax
+        if dimension == "X2" and self.Y is not None:
+            self.Ay = coo_matrix((data,(rows,columns)),shape=(n,n))
+            self.Ay = self.Ay.tocsr()
+            return self.Ay
+        if dimension == "X3" and self.Z is not None:
+            self.Az = coo_matrix((data,(rows,columns)),shape=(n,n))
+            self.Az = self.Az.tocsr()
+            return self.Az
+
+    def set_modelMatrix(self):
+        """
+        Create the full model matrix encompassing every direction. Also, create
+        the iteration matrix and calculate its largest eigenvalue using the
+        power method
         """
 
-        # I could write a check to ensure the shape is correct, but
-        # I can't be bothered at this point.
+        # 1st dimension
+        IX = identity(self.Ax.shape[0], format="csr")
+        AX = self.Ax
+        A = AX
+        # Account for the 2nd dimension
+        if self.Ay is not None:
+            IY = identity(self.Ay.shape[0], format="csr")
+            AX = kron(IY,AX)
+            AY = kron(self.Ay,IX)
+            A = AY+AX
+
+        # Account for the 3rd dimension
+        if self.Az is not None:
+            IZ = identity(self.Az.shape[0], format="csr")
+            AX = kron(IZ,AX)
+            AY = kron(IZ,AY)
+            AZ = kron(self.Az,kron(IY,IX))
+            A = AZ+AY+AX
+
+        self.A = A
+
+        # Create iteration matrix
+        preT, T = self.jacobify(A)
+        self.preT = preT
+        self.T = T
+
+        # Find spectral radius of iteration matrix
+        # Doing so uses the matrix preT, not the iteration matrix T, because the
+        # I term (see the jacobiy method) introduces a constant offset related
+        # to the initial guess, so we iterate on D^-1*A instead
+        lamb = self.powerMethod(preT, N=5000)
+        rhoT = np.abs(lamb[-1]+1)
+        self.rhoT = rhoT
+
+        return A, T, rhoT
+
+    def set_boundaryValues(self, dimension, boundary, value):
+        """
+        ARGS
+        dimension:  The string "X1", "X2", or "X3"
+        boundary:   The string "upper" or "lower" to specify which string is being
+                    operated on
+        value:      The constant value for the specified boundary condition,
+                    must be a constant/scalar value
+
+        Does NOT differentiate between Dirichlet or Neumann BCs, to set those
+        the model matrix must be re-set using "set_1DA" for that particular
+        dimension
+        """
+
+        if dimension == "X1" and boundary == "lower":
+           self.bcX[0] = value
+        elif dimension == "X1" and boundary == "upper":
+            self.bcX[1] = value
+        elif dimension == "X2" and boundary == "lower":
+            self.bcY[0] = value
+        elif dimension == "X2" and boundary == "upper":
+            self.bcY[1] = value
+        elif dimension == "X3" and boundary == "lower":
+            self.bcZ[0] = value
+        elif dimension == "X3" and boundary == "upper":
+            self.bcZ[1] = value
+        else:
+            # Not actual error handling
+            print("""
+            dimension must be one of the following strings: "X1", "X2", "X3".
+            boundary must be one of the following strings: "lower", "upper".
+            """)
+
+    def set_forcing(self, forcing):
+        """
+        Sets the forcing function over the entire domain and lexicographically
+        orders it
+
+        f must be an numOfDim dimensional array specifying the forcing function
+        for each grid point in the domain. f must be indexed as f[i,j,k]
+        returns the forcing at the ith grid point in the x direction, jth
+        gridpoint in the y direction, and kth gridpoint in the z direction
+
+        set_1DA must be called before this function so the boundary information
+        has been given to the class or else it will default to Dirichlet
+        Boundary Conditions
+
+        set_boundaryValues must be called before this function so the boundary
+        values are known, else they will default to homogenous BCs
+
+        """
+
+        fNoBCs = forcing.copy()
+
+        if self.dims == 1:
+            f = self.forcing1D(fNoBCs)
+        if self.dims == 2:
+            f = self.forcing2D(fNoBCs)
+        if self.dims == 3:
+            f = self.forcing3D(fNoBCs)
+
         self.f = f
 
-    def setDirichlet(self,values,boundary):
-        """
-        Set Dirichlet boundary conditions at the boundary
-        given by the "boundary" argument.
+        return f
 
-        boundary -- one of the following strings (defaults to "back", even when
-        the string is not one of the strings found below):
+    def forcing1D(self, f):
 
-        "bottom": the xy plane at z[0]
-        "top": the xy plane at z = z[-1]
-        "left": the yz plane at x[0]
-        "right": the yz plane at x[-1]
-        "forward": the xz plane at y[0]
-        "back": the xz plane at y[-1]
-        "all": all of the above boundaries
-        """
+        # lbcX/Y/Z are used to create slices of f
+        # if not Neumann (ie Dirichlet) then omit the endpoint
+        lbcX = 1 if not self.bcNeumannX[0] else 0
+        ubcX = self.nX-1 if not self.bcNeumannX[1] else self.nX
 
-        self.boundaryCondSet = True
-
-        # Eventually write a check to ensure the size of the boundary and that
-        # of the values you're trying to set are equal
-        if boundary == "bottom" or boundary == "all":
-            self.phi[:,:,0] = values
-        elif boundary == "top" or boundary == "all":
-            self.phi[:,:,-1] = values
-        elif boundary == "left" or boundary == "all":
-            self.phi[0,:,:] = values
-        elif boundary == "right" or boundary == "all":
-            self.phi[-1,:,:] = values
-        elif boundary == "front" or boundary == "all":
-            self.phi[:,0,:] = values
-        elif boundary == "back" or boundary == "all":
-            self.phi[:,-1,:] = values
+        if self.bcNeumannX[0]:
+            f[lbcX] = self.bcX[0]*self.dX[0]
         else:
-            # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, front, back, all" % boundary)
-
-    def resetDirichlet(self,boundary):
-        """
-        Reset Dirichlet boundary conditions at the boundary
-        given by the "boundary" argument to make them homogenous
-
-        boundary -- one of the following strings:
-
-        "bottom": the xy plane at z[0]
-        "top": the xy plane at z = z[-1]
-        "left": the yz plane at x[0]
-        "right": the yz plane at x[-1]
-        "forward": the xz plane at y[0]
-        "back": the xz plane at y[-1]
-        "all": all of the above boundaries
-        """
-
-        # Eventually write a check to ensure the size of the boundary and that
-        # of the values you're trying to set are equal
-        if boundary == "bottom" or boundary == "all":
-            self.phi[:,:,0] = np.zeros_like(self.phi[:,:,0])
-        elif boundary == "top" or boundary == "all":
-            self.phi[:,:,-1] = np.zeros_like(self.phi[:,:,-1])
-        elif boundary == "left" or boundary == "all":
-            self.phi[0,:,:] = np.zeros_like(self.phi[0,:,:])
-        elif boundary == "right" or boundary == "all":
-            self.phi[-1,:,:] = np.zeros_like(self.phi[-1,:,:])
-        elif boundary == "front" or boundary == "all":
-            self.phi[:,0,:] = np.zeros_like(self.phi[:,0,:])
-        elif boundary == "back" or boundary == "all":
-            self.phi[:,-1,:] = np.zeros_like(self.phi[:,-1,:])
+            f[lbcX] = f[lbcX]-2.*self.bcX[0]/(self.dX[0]*(self.dX[1]+self.dX[0]))
+        if self.bcNeumannX[1]:
+            f[ubcX-1] = self.bcX[1]*self.dX[-1]
         else:
-            # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, front, back, all" % boundary)
+            f[ubcX-1] = f[ubcX-1]-2.*self.bcX[1]/(self.dX[-1]*(self.dX[-1]+self.dX[-2]))
 
-    def setNeumann(self,H,boundary):
-        """
-        Set Neumman boundary conditions dphi/dxi = h(x,y,z,phi,f)
-        where dphi/dxi is the partial derivative in the normal
-        direction of the boundary and H is a user defined function
+        F = f[lbcX:ubcX]
+        return F
 
-        boundary -- one of the following strings:
+    def forcing2D(self, f):
 
-        "bottom": the xy plane at z[0]
-        "top": the xy plane at z = z[-1]
-        "left": the yz plane at x[0]
-        "right": the yz plane at x[-1]
-        "forward": the xz plane at y[0]
-        "back": the xz plane at y[-1]
-        "all": all of the above boundaries
-        """
+        # lbcX/Y/Z are used to create slices of f
+        # if not Neumann (ie Dirichlet) then omit the endpoint
 
-        if boundary == "bottom" or boundary == "all":
-            self.neumBot = True
-            self.neumBotH = H
-        elif boundary == "top" or boundary == "all":
-            self.neumTop = True
-            self.neumTopH = H
-        elif boundary == "left" or boundary == "all":
-            self.neumLef = True
-            self.neumLefH = H
-        elif boundary == "right" or boundary == "all":
-            self.neumRig = True
-            self.neumRigH = H
-        elif boundary == "forward" or boundary == "all":
-            self.neumFor = True
-            self.neumForH = H
-        elif boundary == "back" or boundary == "all":
-            self.neumBac = True
-            self.neumBacH = H
+        # X Boundary Conditions
+        # The lower x boundary is found at all y and the first x index: f[:,iX0]
+        # The upper x boundary is found at all y and the last x index: f[:,iX]
+        iX0 = 1 if not self.bcNeumannX[0] else 0
+        iX = self.nX-1 if not self.bcNeumannX[1] else self.nX
+
+        if self.bcNeumannX[0]:
+            f[:,iX0] = self.bcX[0]*self.dX[0]
         else:
-            # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, front, back, all" % boundary)
-
-        self.boundaryCondSet = True
-
-    def resetNeumann(self,boundary):
-        """
-        Reset Neumman boundary conditions so that the solver does not
-        attempt to use them
-
-        boundary -- one of the following strings:
-
-        "bottom": the xy plane at z[0]
-        "top": the xy plane at z = z[-1]
-        "left": the yz plane at x[0]
-        "right": the yz plane at x[-1]
-        "forward": the xz plane at y[0]
-        "back": the xz plane at y[-1]
-        "all": all of the above boundaries
-        """
-
-        H = lambda x,y,z,phi,f : 0
-
-        if boundary == "bottom" or boundary == "all":
-            self.neumBot = False
-            self.neumBotH = H
-        elif boundary == "top" or boundary == "all":
-            self.neumTop = False
-            self.neumTopH = H
-        elif boundary == "left" or boundary == "all":
-            self.neumLef = False
-            self.neumLefH = H
-        elif boundary == "right" or boundary == "all":
-            self.neumRig = False
-            self.neumRigH = H
-        elif boundary == "forward" or boundary == "all":
-            self.neumFor = False
-            self.neumForH = H
-        elif boundary == "back" or boundary == "all":
-            self.neumBac = False
-            self.neumBacH = H
+            f[:,iX0] = f[:,iX0]-2.*self.bcX[0]/(self.dX[0]*(self.dX[1]+self.dX[0]))
+        if self.bcNeumannX[1]:
+            f[:,iX-1] = self.bcX[1]*self.dX[-1]
         else:
-            # Print "error" message, because I never learned proper error handling
-            print("ERROR: the string \"%s\" is not one of the allowed options:\
-                    bottom, top, left, right, front, back, all" % boundary)
+            f[:,iX-1] = f[:,iX-1]-2.*self.bcX[1]/(self.dX[-1]*(self.dX[-1]+self.dX[-2]))
 
-    def solvePoisson(self, numOfIt, debug=False, dbFilename="./debug.npz"):
+        # Y Boundary Conditions
+        # The lower y boundary is found at all x,z and the first y index: f[:,iY0,:]
+        # The upper y boundary is found at all x,z and the last y index: f[:,iY,:]
+        iY0 = 1 if not self.bcNeumannY[0] else 0
+        iY = self.nY-1 if not self.bcNeumannY[1] else self.nY
 
-        if not self.boundaryCondSet:
-            print("Boundary conditions not explicitly set. Defaulting to homogeneous Dirichlet conditions at all boundaries...")
+        if self.bcNeumannY[0]:
+            f[iY0,:] = self.bcY[0]*self.dY[0]
+        else:
+            f[iY0,:] = f[iY0,:]-2.*self.bcY[0]/(self.dY[0]*(self.dY[1]+self.dY[0]))
+        if self.bcNeumannY[1]:
+            f[iY-1,:] = self.bcY[1]*self.dY[-1]
+        else:
+            f[iY-1,:] = f[iY0,:]-2.*self.bcY[1]/(self.dY[-1]*(self.dY[-1]+self.dY[-2]))
 
-        # Make a copy of self.phi to ensure you can change
-        # boundary conditions, numOfIt, etc during the same run
-        # without having to create another instance of this object
-        self.soln = self.phi.copy()
+        F = f[iY0:iY,iX0:iX]
 
-        dbBot, dbTop, dbLef, dbRig, dbFor, dbBac = 0,0,0,0,0,0
+        return F
 
-        if debug and self.neumBot:
-            dbBot = np.zeros((numOfIt+1,self.nx,self.ny))
-            dbBot[0,:,:] = self.soln[:,:,0]
-        if debug and self.neumTop:
-            dbTop = np.zeros((numOfIt+1,self.nx,self.ny))
-            dbTop[0,:,:] = self.soln[:,:,-1]
-        if debug and self.neumLef:
-            dbLef = np.zeros((numOfIt+1,self.ny,self.nz))
-            dbLef[0,:,:] = self.soln[0,:,:]
-        if debug and self.neumRig:
-            dbRig = np.zeros((numOfIt+1,self.ny,self.nz))
-            dbRig[0,:,:] = self.soln[-1,:,:]
-        if debug and self.neumFor:
-            dbFor = np.zeros((numOfIt+1,self.nx,self.nz))
-            dbFor[0,:,:] = self.soln[:,0,:]
-        if debug and self.neumBac:
-            dbBac = np.zeros((numOfIt+1,self.nx,self.nz))
-            dbBac[0,:,:] = self.soln[:,-1,:]
+    def forcing3D(self, f):
 
-        # Make a copy of self.phi to ensure you can change
-        # boundary conditions, numOfIt, etc during the same run
-        # without having to create another instance of this object
-        # self.soln = self.phi.copy()
+        # lbcX/Y/Z are used to create slices of f
+        # if not Neumann (ie Dirichlet) then omit the endpoint
 
-        # Begin iterative solver
-        print("Iteration: ", end="")
-        for i in range(0,numOfIt):
-        
-            if i % 200 == 0:
-                print(i, end=", ")
-        
-            # Calculate boundary conditions (if they are Neumman) using
-            # a first order accurate foward or backward difference method
-            if self.neumBot:
-                self.soln[:,:,0] = self.soln[:,:,1]-self.dZ[0]*self.neumBotH(self.x,self.y,self.z[0],self.soln[:,:,0],self.f[:,:,0])
-                if debug: dbBot[i,:,:] = self.soln[:,:,0]
-            if self.neumTop:
-                self.soln[:,:,-1] = self.soln[:,:,-2]+self.dZ[-1]*self.neumTopH(self.x,self.y,self.z[-1],self.soln[:,:,-1],self.f[:,:,-1])
-                if debug: dbTop[i,:,:] = self.soln[:,:,-1]
-            if self.neumLef:
-                self.soln[0,:,:] = self.soln[1,:,:]-self.dX[0]*self.neumLefH(self.x[0],self.y,self.z,self.soln[0,:,:],self.f[0,:,:])
-                if debug: dbLef[i,:,:] = self.soln[0,:,:]
-            if self.neumRig:
-                self.soln[-1,:,:] = self.soln[-2,:,:]+self.dX[-1]*self.neumRigH(self.x[-1],self.y,self.z,self.soln[-1,:,:],self.f[-1,:,:])
-                if debug: dbRig[i,:,:] = self.soln[-1,:,:]
-            if self.neumFor:
-                self.soln[:,0,:] = self.soln[:,1,:]-self.dY[0]*self.neumForH(self.x,self.y[0],self.z,self.soln[:,0,:],self.f[:,0,:])
-                if debug: dbFor[i,:,:] = self.soln[:,0,:]
-            if self.neumBac:
-                self.soln[:,-1,:] = self.soln[:,-2,:]+self.dY[-1]*self.neumBacH(self.x,self.y[-1],self.z,self.soln[:,-1,:],self.f[:,-1,:])
-                if debug: dbBac[i,:,:] = self.soln[:,-1,:]
-        
-            # Apply the method of relaxation for interior points
-            self.soln[1:-1,1:-1,1:-1] = 1./(self.B+self.E+self.H)*(
-                    self.f[1:-1,1:-1,1:-1]
-                    - self.A*self.soln[:-2,1:-1,1:-1] - self.C*self.soln[2:,1:-1,1:-1]
-                    - self.D*self.soln[1:-1,:-2,1:-1] - self.F*self.soln[1:-1,2:,1:-1]
-                    - self.G*self.soln[1:-1,1:-1,:-2] - self.J*self.soln[1:-1,1:-1,2:])
+        # X Boundary Conditions
+        # The lower x boundary is found at all y,z and the first x index: f[:,:,iX0]
+        # The upper x boundary is found at all y,z and the last x index: f[:,:,iX]
+        iX0 = 1 if not self.bcNeumannX[0] else 0
+        iX = self.nX-1 if not self.bcNeumannX[1] else self.nX
 
-        if debug:
-            np.savez_compressed(dbFilename, dbBot=dbBot, dbTop=dbTop,
-                    dbLef=dbLef, dbRig=dbRig, dbFor=dbFor, dbBac=dbBac)
+        if self.bcNeumannX[0]:
+            f[:,:,iX0] = self.bcX[0]*self.dX[0]
+        else:
+            f[:,:,iX0] = f[:,:,iX0]-2.*self.bcX[0]/(self.dX[0]*(self.dX[1]+self.dX[0]))
+        if self.bcNeumannX[1]:
+            f[:,:,iX-1] = self.bcX[1]*self.dX[-1]
+        else:
+            f[:,:,iX-1] = f[:,:,iX-1]-2.*self.bcX[1]/(self.dX[-1]*(self.dX[-1]+self.dX[-2]))
 
-        print()
+        # Y Boundary Conditions
+        # The lower y boundary is found at all x,z and the first y index: f[:,iY0,:]
+        # The upper y boundary is found at all x,z and the last y index: f[:,iY,:]
+        iY0 = 1 if not self.bcNeumannY[0] else 0
+        iY = self.nY-1 if not self.bcNeumannY[1] else self.nY
 
-    def saveSolution(self, filename):
+        if self.bcNeumannY[0]:
+            f[:,iY0,:] = self.bcY[0]*self.dY[0]
+        else:
+            f[:,iY0,:] = f[:,iY0,:]-2.*self.bcY[0]/(self.dY[0]*(self.dY[1]+self.dY[0]))
+        if self.bcNeumannY[1]:
+            f[:,iY-1,:] = self.bcY[1]*self.dY[-1]
+        else:
+            f[:,iY-1,:] = f[:,iY0,:]-2.*self.bcY[1]/(self.dY[-1]*(self.dY[-1]+self.dY[-2]))
+
+        # Z Boundary Conditions
+        # The lower z boundary is found at all x,y and the first z index: f[iZ0,:,:]
+        # The upper z boundary is found at all x,y and the last z index: f[iZ,:,:]
+        iZ0 = 1 if not self.bcNeumannZ[0] else 0
+        iZ = self.nZ-1 if not self.bcNeumannZ[1] else self.nZ
+
+        if self.bcNeumannZ[0]:
+            f[iZ0,:,:] = self.bcZ[0]*self.dZ[0]
+        else:
+            f[iZ0,:,:] = f[iZ0,:,:]-2.*self.bcZ[0]/(self.dZ[0]*(self.dZ[1]+self.dZ[0]))
+        if self.bcNeumannZ[1]:
+            f[iZ-1,:,:] = self.bcZ[1]*self.dZ[-1]
+        else:
+            f[iZ-1,:,:] = f[iZ-1,:,:]-2.*self.bcZ[1]/(self.dZ[-1]*(self.dZ[-1]+self.dZ[-2]))
+
+        F = f[iZ0:iZ,iY0:iY,iX0:iX]
+        return F
+
+
+    def jacobify(self, A):
+        L = A.get_shape()
+        L = L[0]
+        I = identity(L)
+        D = A.diagonal()
+        Dinv = diags(D**(-1), format="csr")
+        preT = -Dinv*A
+        T = I+preT
+        return preT, T
+
+    def powerMethod(self, A, x=None, N=500):
         """
-        Save the following variables in the .npz file format:
-        x,y,z,
-        xEdge,yEdge,zEdge,
-        phi,soln
+        Power method on A with a random initial eigenvector x for N interations,
+        defaulted to 500
         """
-        np.savez_compressed(filename, x=self.x, y=self.y, z=self.z,
-                xEdge=self.xEdge, yEdge=self.yEdge, zEdge=self.zEdge,
-                phiInit=self.phi, soln=self.soln)
+        if x is None:
+            x = np.random.rand(A.shape[0])
+
+        y = np.zeros_like(x)
+        lamb = np.zeros(N)
+
+        for i in range(0,N):
+            y = A.dot(x)
+            x = y/np.linalg.norm(y)
+            tmp = A.dot(x)
+            lamb[i] = np.dot(x,tmp)
+
+        return lamb
+
+    def jacobisMethod(self, decPoints, phi0=None):
+        """
+        Apply Jacobi's Iterative Method until the initial error has been reduced
+        to decPoints number of decimal points, which should be some value less than 1
+        """
+        # Flatten the forcing function into shape of model matrix
+        # F = self.f.flatten(order="F")
+        F = self.f.flatten()
+
+        # Forcing function for Jacobi's Method is D**(-1) f
+        F = (self.A.diagonal())**(-1)*F
+
+        if phi0 is None:
+            phi0 = np.zeros_like(F)
+
+        err = 1.0
+        phi = phi0
+        #phi = phi.flatten(order="F")
+        phi = phi.flatten()
+
+        # Num of iterations
+        t = -decPoints*np.log(10)/np.log(self.rhoT)
+
+        for i in range(0,int(t)):
+            phi = self.T*phi+F
+
+        print("Total num of iterations: {}".format(t))
+
+        self.t = t
+
+        # Reshape into the shape of the domain
+        soln = np.reshape(phi, self.f.shape)
+
+        self.soln = soln
+
+        return soln
+
+
+
+

@@ -1,5 +1,5 @@
 import numpy as np
-from sgpsKron import *
+from sgps import *
 from matplotlib import pyplot as plt
 
 def genPlots(X,sgps,exactSoln,bcType,bcValues,decPlaces,const,gridType):
