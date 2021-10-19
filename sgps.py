@@ -4,6 +4,7 @@ Jacobi's method on 1, 2, or 3 dimensions using the Kronecker Product
 
 import numpy as np
 from scipy.sparse import *
+from scipy.sparse.linalg import norm
 from matplotlib import pyplot as plt
 
 class StretchedGridPoisson:
@@ -103,7 +104,8 @@ class StretchedGridPoisson:
         # an inconsistent system. If NBCs prescribed at one of the boundaries,
         # the matrix will be (n+1) x (n+1) rather than n x n for DBCs at both
         # boundaries
-        n = n+1 if (lbcNeumann or ubcNeumann) else n
+        # n = n+1 if (lbcNeumann or ubcNeumann) else n
+        n = n+lbcNeumann+ubcNeumann
 
         # The number of elements in the tridiagonal matrix, remembering that the
         # first and last columns only have 2 elements
@@ -202,6 +204,13 @@ class StretchedGridPoisson:
         # to the initial guess, so we iterate on D^-1*A instead
         lamb = self.powerMethod(preT, N=5000)
         rhoT = np.abs(lamb[-1]+1)
+        print("Power Method p: {}".format(rhoT))
+
+        # Find the spectral radius of iteration matrix using Gelfand's Forumula,
+        # which should always yield an estimate greater than or equal to the
+        # actual spectral radius
+        # lamb = self.gelfandsFormula(T)
+        # print("Gelfand's Formula p: {}".format(lamb))
         self.rhoT = rhoT
 
         return A, T, rhoT
@@ -245,7 +254,8 @@ class StretchedGridPoisson:
         orders it
 
         f must be an numOfDim dimensional array specifying the forcing function
-        for each grid point in the domain. f must be indexed as f[i,j,k]
+        for each grid point in the domain. f must be Cartesian indexed as
+        f[Y,X,Z] ( see the numpy documentation for np.meshgrid() )
         returns the forcing at the ith grid point in the x direction, jth
         gridpoint in the y direction, and kth gridpoint in the z direction
 
@@ -258,6 +268,10 @@ class StretchedGridPoisson:
 
         """
 
+        # Copy the array to ensure we're not working with a reference/window to
+        # the array, then move the axis so f is indexed as f[Z,Y,X] instead in
+        # the 3D case, which is necessary when applying subsequent matrix
+        # operations
         fNoBCs = forcing.copy()
 
         if self.dims == 1:
@@ -265,6 +279,7 @@ class StretchedGridPoisson:
         if self.dims == 2:
             f = self.forcing2D(fNoBCs)
         if self.dims == 3:
+            fNoBCs = np.moveaxis(fNoBCs,0,1)
             f = self.forcing3D(fNoBCs)
 
         self.f = f
@@ -412,35 +427,72 @@ class StretchedGridPoisson:
 
         return lamb
 
+    def gelfandsFormula(self,A,N=200):
+        """
+        Apply Gelfand's Forumula to approximate the spectral radius using the p=1
+        matrix norm (see p-norm for matrices)
+
+        p(A) ~ norm(A^N)^(1/N)
+
+        Try N=5000 iterations; if p(A) > 1 after N iterations, double the amount
+        of iterations.
+        """
+
+        size = A.shape[0]
+        B = A.power(2)
+
+        i = 2
+        its = N
+        p = 1
+        while i < its:
+            if i**2 < its:
+                B = B.power(2)
+                i = i**2
+                print(i)
+            else:
+                B = B.dot(A)
+                i = i+1
+            p = norm(B,ord=1)**(1./i)
+            if i%1000 == 0:
+                print(i)
+            if i == its and p >= 1:
+                its = 2*its
+                print(its)
+
+        return p
+
     def jacobisMethod(self, decPoints, phi0=None):
         """
         Apply Jacobi's Iterative Method until the initial error has been reduced
-        to decPoints number of decimal points, which should be some value less than 1
+        by decPoints number of decimal points
+
+        phi0 is Cartesian indexed, ie phi0[Y,X,Z]
+
         """
         # Flatten the forcing function into shape of model matrix
         # F = self.f.flatten(order="F")
         F = self.f.flatten()
 
         # Forcing function for Jacobi's Method is D**(-1) f
+        print(self.A.diagonal().shape,F.shape)
         F = (self.A.diagonal())**(-1)*F
 
         if phi0 is None:
-            phi0 = np.zeros_like(F)
+            phi0 = np.zeros_like(self.f)
 
-        err = 1.0
+        if self.dims > 1:
+            phi0 = np.moveaxis(phi0,0,1)
         phi = phi0
-        #phi = phi.flatten(order="F")
         phi = phi.flatten()
 
         # Num of iterations
         t = -decPoints*np.log(10)/np.log(self.rhoT)
+        print("Total num of iterations: {}".format(t))
+        self.t = t
 
         for i in range(0,int(t)):
             phi = self.T*phi+F
 
-        print("Total num of iterations: {}".format(t))
-
-        self.t = t
 
         # Reshape into the shape of the domain
         soln = np.reshape(phi, self.f.shape)
