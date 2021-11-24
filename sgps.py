@@ -474,7 +474,6 @@ class StretchedGridPoisson:
         F = self.f.flatten()
 
         # Forcing function for Jacobi's Method is D**(-1) f
-        print(self.A.diagonal().shape,F.shape)
         F = (self.A.diagonal())**(-1)*F
 
         if phi0 is None:
@@ -489,6 +488,10 @@ class StretchedGridPoisson:
         t = -decPoints*np.log(10)/np.log(self.rhoT)
         print("Total num of iterations: {}".format(t))
         self.t = t
+
+        print("T: ", self.T.shape)
+        print("phi: ", phi.shape)
+        print("F: ", F.shape)
 
         for i in range(0,int(t)):
             phi = self.T*phi+F

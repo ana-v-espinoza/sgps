@@ -10,11 +10,15 @@ from sgps import *
 # Define the domain
 #############################################################
 
-nx, ny, nz = 100, 100, 100
+#nx, ny, nz = 100, 100, 100
+nx, ny, nz = 151, 151, 151
 
-x0, xL = -1500., 1500.    # m
-y0, yJ = -1500., 1500.    # m
-z0, zK = -1500., 1500.    # m
+#x0, xL = -1500., 1500.    # m
+#y0, yJ = -1500., 1500.    # m
+#z0, zK = -1500., 1500.    # m
+x0, xL = -3000., 3040.    # m
+y0, yJ = -3000., 3040.    # m
+z0, zK = -3000., 3040.    # m
 
 dx = (xL-x0)/(nx) # m
 dy = (yJ-y0)/(ny) # m
@@ -31,7 +35,8 @@ X, Y, Z = np.meshgrid(x,y,z)
 # Define uniformly charged sphere
 #############################################################
 
-radius = 100.       # m
+#radius = 100.       # m
+radius = 120.       # m
 xcenter = 0.        # m
 ycenter = 0.        # m
 zcenter = 0.        # m
@@ -108,7 +113,7 @@ sgps.set_1DA("X3")
 
 sgps.set_forcing(f)
 sgps.set_modelMatrix()
-phi0 = np.zeros_like(f)
+phi0 = np.zeros_like(f[1:-1,1:-1,1:-1])
 
 #############################################################
 # Solve
@@ -144,11 +149,11 @@ if 1:
 # Plot Error
 #############################################################
 
-err0 = phi0[1:-1,1:-1,1:-1] - soln
+err0 = phi0 - phiExact[1:-1,1:-1,1:-1]
 err = phiExact[1:-1,1:-1,1:-1] - soln
 
-nErr0 = np.norm(np.flatten(err0))
-nErr = np.norm(np.flatten(err))
+nErr0 = np.linalg.norm(err0.flatten())
+nErr = np.linalg.norm(err.flatten())
 
 print(nErr0, nErr)
 
